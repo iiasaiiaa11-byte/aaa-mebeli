@@ -102,6 +102,19 @@ body{background:var(--bg);color:var(--t1);font-family:'Segoe UI',system-ui,sans-
 
 .alert{background:var(--bg3);border:1px solid var(--brd2);border-radius:var(--r);padding:16px;color:var(--t3);text-align:center;font-size:.85rem}
 
+/* ORDER FORM */
+.order-form{margin-top:16px;background:var(--bg3);border:1px solid var(--brd2);border-radius:var(--r);padding:16px}
+.order-form-title{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);margin-bottom:12px}
+.order-form-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+.of-input{background:var(--bg4);border:1px solid var(--brd2);color:var(--t1);padding:8px 10px;font-size:.82rem;width:100%;border-radius:var(--r);transition:border-color var(--tr)}
+.of-input:focus{outline:none;border-color:var(--gold)}
+.of-input::placeholder{color:var(--t3)}
+.of-row{display:flex;align-items:center;gap:10px}
+.save-order-btn{padding:9px 20px;background:var(--gold-bg);border:1px solid var(--gold);color:var(--gold);font-size:.8rem;font-weight:700;cursor:pointer;letter-spacing:.05em;border-radius:var(--r);transition:all var(--tr);white-space:nowrap}
+.save-order-btn:hover{background:var(--gold);color:var(--bg)}
+.save-order-msg{font-size:.78rem;color:var(--green);opacity:0;transition:opacity .3s}
+@media(max-width:600px){.order-form-grid{grid-template-columns:1fr}}
+
 /* SAVE BTN */
 .save-btn{width:100%;padding:9px;background:var(--gold-bg);border:1px solid var(--gold);color:var(--gold);font-size:.8rem;font-weight:700;cursor:pointer;letter-spacing:.05em;border-radius:var(--r);margin-top:12px;transition:all var(--tr)}
 .save-btn:hover{background:var(--gold);color:var(--bg)}
@@ -503,8 +516,28 @@ function calc(){
       </div>
     </div>`;
 
+  const orderForm = `
+    <div class="order-form">
+      <div class="order-form-title">Сохранить заявку в кабинет</div>
+      <div class="order-form-grid">
+        <input class="of-input" id="of-name" type="text" placeholder="Имя клиента">
+        <input class="of-input" id="of-phone" type="tel" placeholder="Телефон">
+        <input class="of-input" id="of-note" type="text" placeholder="Примечание (необязательно)">
+      </div>
+      <div class="of-row">
+        <button class="save-order-btn" onclick="saveOrder()">💾 Сохранить заявку</button>
+        <span class="save-order-msg" id="of-msg">✓ Заявка сохранена</span>
+      </div>
+    </div>`;
+
   document.getElementById('result-area').innerHTML =
-    `<div class="breakdown">${rows}</div>${boxes}`;
+    `<div class="breakdown">${rows}</div>${boxes}${orderForm}`;
+
+  // restore name/phone if filled
+  const _n = sessionStorage.getItem('of-name-tmp');
+  const _p = sessionStorage.getItem('of-phone-tmp');
+  if(_n) document.getElementById('of-name').value = _n;
+  if(_p) document.getElementById('of-phone').value = _p;
 }
 
 // ═══ SAVE / LOAD ═══
@@ -530,6 +563,61 @@ function loadPrices(){
     const el = document.getElementById(id);
     if(el) el.value = val;
   });
+}
+
+// ═══ SAVE ORDER ═══
+function saveOrder(){
+  const name  = (document.getElementById('of-name')?.value||'').trim();
+  const phone = (document.getElementById('of-phone')?.value||'').trim();
+  const note  = (document.getElementById('of-note')?.value||'').trim();
+  const len   = parseFloat(document.getElementById('c-len').value)||0;
+  const pr    = getPrices();
+
+  // remember name/phone across recalc
+  sessionStorage.setItem('of-name-tmp', name);
+  sessionStorage.setItem('of-phone-tmp', phone);
+
+  const facLbl = { dsp:'ДСП (ПДЧ)', pvc:'МДФ плёнка (PVC)', hpl:'МДФ-пластик (HPL)', enamel:'МДФ-эмаль (лак)' };
+  const topLbl = { pf:'Постформинг', tp:'Термоплот', hpl:'HPL', quartz:'Кварц' };
+  const backLbl= { tg:'Термогръб', glass:'Стекло', tile:'Плитка', hpl:'HPL' };
+
+  let corpLm = pr.corpLow + (state.upH==='920'?pr.corpUp920:pr.corpUp720);
+  if(state.corp==='color') corpLm *= (1 + pr.corpColorPct/100);
+  const facPr = pr.fac[state.fac];
+  const topPr = pr.top[state.top];
+  const backPr= pr.back[state.back];
+  let extraLm = 0;
+  const extras=[];
+  if(document.getElementById('x-led').checked){extraLm+=pr.led;extras.push('LED');}
+  if(document.getElementById('x-handles').checked){extraLm+=pr.handles;extras.push('Ручки');}
+  if(document.getElementById('x-softclose').checked){extraLm+=pr.softclose;extras.push('Soft-close');}
+  if(document.getElementById('x-drawers').checked){extraLm+=pr.drawers;extras.push('Ящики');}
+
+  const totalMin = (corpLm+facPr.min+topPr+backPr+extraLm)*len;
+  const totalMax = (corpLm+facPr.max+topPr+backPr+extraLm)*len;
+
+  const order = {
+    id: Date.now(),
+    name: name||'—',
+    phone: phone||'—',
+    facade: facLbl[state.fac],
+    length: len+' л.м',
+    color: 'Корпус '+(state.corp==='color'?'цветной':'белый')+', верха '+state.upH+'мм',
+    extras: extras.length?extras.join(', '):'—',
+    price_total: totalMin.toFixed(0)+'–'+totalMax.toFixed(0)+' €',
+    countertop: topLbl[state.top],
+    backsplash: backLbl[state.back],
+    note: note||'',
+    timestamp: new Date().toLocaleString('ru-RU'),
+    source: 'калькулятор'
+  };
+
+  const orders = JSON.parse(localStorage.getItem('aaa-orders')||'[]');
+  orders.unshift(order);
+  localStorage.setItem('aaa-orders', JSON.stringify(orders.slice(0,200)));
+
+  const msg = document.getElementById('of-msg');
+  if(msg){ msg.style.opacity='1'; setTimeout(()=>msg.style.opacity='0',2500); }
 }
 
 // ═══ INIT ═══
